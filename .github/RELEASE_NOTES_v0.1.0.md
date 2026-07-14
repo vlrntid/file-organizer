@@ -13,7 +13,7 @@ tool that automatically sorts files into categorized folders.
 
 ## Install
 ```bash
-pip install file-organizer
+pip install neatfiles
 ```
 Or clone and install in development mode:
 ```bash

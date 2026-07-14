@@ -42,7 +42,7 @@ git clone https://github.com/vlrntid/file-organizer.git
 pip install -e ".[dev]"
 
 # Or install from PyPI (when published)
-pip install file-organizer
+pip install neatfiles
 ```
 
 ## Usage
