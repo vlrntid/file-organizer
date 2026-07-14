@@ -17,3 +17,6 @@ Thumbs.db
 htmlcov/
 *.mo
 *.pot
+# Test artifacts
+test_source/
+01-python/
