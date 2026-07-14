@@ -1,5 +1,10 @@
 # File Organizer
 
+[![CI](https://github.com/vlrntid/file-organizer/actions/workflows/ci.yml/badge.svg)](https://github.com/vlrntid/file-organizer/actions/workflows/ci.yml)
+[![Coverage](https://codecov.io/gh/vlrntid/file-organizer/branch/main/graph/badge.svg)](https://codecov.io/gh/vlrntid/file-organizer)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue.svg)](https://www.python.org)
+
 A command-line tool to automatically organize files into categorized folders (Images, Videos, Documents, Audio, Archives, Others).
 
 ## Table of Contents
@@ -24,7 +29,7 @@ A command-line tool to automatically organize files into categorized folders (Im
 ## Installation
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/file-organizer.git
+git clone https://github.com/vlrntid/file-organizer.git
 
 # Install in development mode
 pip install -e ".[dev]"
@@ -115,7 +120,7 @@ file-organizer ~/Project --exclude "*cache*" --exclude "__pycache__"
 
 ### Setup
 ```bash
-git clone https://github.com/yourusername/file-organizer.git
+git clone https://github.com/vlrntid/file-organizer.git
 cd file-organizer
 pip install -e ".[dev]"
 ```
@@ -160,4 +165,4 @@ Distributed under the MIT License. See [LICENSE](LICENSE) for more information.
 5. Open a Pull Request
 
 ## Support
-If you encounter any issues or have feature requests, please [open an issue](https://github.com/yourusername/file-organizer/issues).
+If you encounter any issues or have feature requests, please [open an issue](https://github.com/vlrntid/file-organizer/issues).
