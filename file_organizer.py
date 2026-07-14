@@ -21,6 +21,7 @@ Install with:
 import argparse
 import fnmatch
 import logging
+from datetime import datetime
 import shutil
 import sys
 import json
@@ -293,6 +294,34 @@ def generate_preview(
     return moves
 
 
+def generate_date_preview(
+    files: List[Path], target_root: Path
+) -> List[Tuple[Path, Path]]:
+    """
+    Plan moves that group files into ``year/month`` folders based on their
+    modification time. Conflict resolution adds a counter suffix as usual.
+    """
+    moves: List[Tuple[Path, Path]] = []
+    for src in files:
+        try:
+            mtime = src.stat().st_mtime
+        except OSError:
+            continue
+        dt = datetime.fromtimestamp(mtime)
+        dest_dir = target_root / f"{dt.year}" / f"{dt.month:02d}"
+        raw_dest = dest_dir / src.name
+        dest = raw_dest
+        counter = 1
+        while dest.exists():
+            stem = raw_dest.stem
+            suffix = raw_dest.suffix
+            dest = dest_dir / f"{stem}_{counter}{suffix}"
+            counter += 1
+        moves.append((src, dest))
+
+    return moves
+
+
 def print_preview(moves: List[Tuple[Path, Path]]) -> None:
     """Render a human‑readable preview of the planned moves."""
     if not moves:
@@ -538,6 +567,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Write a JSON report of the planned/applied moves to this file.",
     )
     parser.add_argument(
+        "--by-date",
+        action="store_true",
+        help="Organize files into year/month folders by modification time.",
+    )
+    parser.add_argument(
         "--version",
         action="version",
         version="file-organizer 0.1.0",
@@ -604,7 +638,10 @@ def main() -> None:
     # ------------------------------------------------------------------
     # 2️⃣ Preview
     # ------------------------------------------------------------------
-    moves = generate_preview(category_map, target_root)
+    if args.by_date:
+        moves = generate_date_preview(all_files, target_root)
+    else:
+        moves = generate_preview(category_map, target_root)
     if not args.quiet:
         print_preview(moves)
 

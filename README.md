@@ -21,6 +21,7 @@ A command-line tool to automatically organize files into categorized folders (Im
 ## Features
 - **Recursive Scanning**: Organizes files in nested subdirectories
 - **Smart Categorization**: 6 built-in categories (Images, Videos, Documents, Audio, Archives, Others)
+- **Date Organization**: Alternatively group files into `year/month` folders with `--by-date`
 - **Safe Operations**: Never overwrites files; adds counter suffix for conflicts
 - **Dry-run Mode**: Preview all changes before executing
 - **Undo**: Reverse the last organization using the recorded move history
@@ -59,6 +60,9 @@ file-organizer ~/Downloads --dry-run --report plan.json
 # Quiet mode (summary only) for cron/automation
 file-organizer ~/Downloads -q
 
+# Organize into year/month folders by modification date
+file-organizer ~/Downloads --by-date
+
 # Verbose output
 file-organizer /path/to/source -v
 
@@ -83,6 +87,7 @@ file-organizer /path/to/source --exclude "*cache*" --exclude "*.tmp"
 | `--undo` | Reverse the last organization using the move history | `False` |
 | `-q`, `--quiet` | Suppress the preview; only print the final summary | `False` |
 | `--report` | Write a JSON report of the planned/applied moves to this file | `None` |
+| `--by-date` | Organize files into `year/month` folders by modification time | `False` |
 | `--version` | Show program version and exit | `N/A` |
 
 ## Configuration

@@ -17,6 +17,7 @@ from file_organizer import (
     get_category_by_extension,
     scan_directory,
     generate_preview,
+    generate_date_preview,
     execute_moves,
     undo_moves,
     write_report,
@@ -227,6 +228,26 @@ class TestGeneratePreview:
         src, dest = moves[0]
         # Should have counter suffix
         assert dest.name == "photo_1.jpg"
+
+
+class TestGenerateDatePreview:
+    """Tests for generate_date_preview function."""
+
+    def test_generate_date_preview(self, temp_dir: Path) -> None:
+        """Files are planned into year/month folders by modification time."""
+        import os
+        from datetime import datetime
+
+        src = temp_dir / "photo.jpg"
+        src.write_text("x")
+        os.utime(src, (1710000000, 1710000000))
+
+        moves = generate_date_preview([src], temp_dir)
+
+        dt = datetime.fromtimestamp(1710000000)
+        expected_dir = temp_dir / f"{dt.year}" / f"{dt.month:02d}"
+        assert len(moves) == 1
+        assert moves[0][1].parent == expected_dir
 
 
 # ----------------------------------------------------------------------
