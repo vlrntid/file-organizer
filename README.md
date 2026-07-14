@@ -211,5 +211,8 @@ Distributed under the MIT License. See [LICENSE](LICENSE) for more information.
 4. Push to the Branch (`git push origin feature/AmazingFeature`)
 5. Open a Pull Request
 
+> **Note:** `main` is a protected branch — changes must be made via pull
+> request and force-pushes are disabled. Branch from `main` and open a PR.
+
 ## Support
 If you encounter any issues or have feature requests, please [open an issue](https://github.com/vlrntid/file-organizer/issues).
