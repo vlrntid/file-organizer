@@ -572,6 +572,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Organize files into year/month folders by modification time.",
     )
     parser.add_argument(
+        "-y",
+        "--yes",
+        action="store_true",
+        help="Skip the interactive confirmation prompt before moving.",
+    )
+    parser.add_argument(
         "--version",
         action="version",
         version="file-organizer 0.1.0",
@@ -649,6 +655,13 @@ def main() -> None:
         # ------------------------------------------------------------------
         # 3️⃣ Execute
         # ------------------------------------------------------------------
+        # Confirm before mutating, unless --yes or a non-interactive session.
+        if not args.yes and sys.stdin.isatty():
+            answer = input(f"Move {len(moves)} files? [y/N] ").strip().lower()
+            if answer not in ("y", "yes"):
+                log.info("Aborted – no files were moved.")
+                return
+
         log.info("Organizing files …")
         success, failed = execute_moves(moves)
 

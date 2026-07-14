@@ -27,6 +27,7 @@ A command-line tool to automatically organize files into categorized folders (Im
 - **Undo**: Reverse the last organization using the recorded move history
 - **JSON Report**: Emit a machine-readable report of every move with `--report`
 - **Quiet Mode**: Suppress the preview for cron/automation with `-q`
+- **Safe by Default**: Prompts for confirmation before moving (skip with `-y`)
 - **Flexible Exclusions**: Customizable ignore patterns for git repos, virtual environments, etc.
 - **Multiple Sources**: Organize from multiple directories into one target
 - **Cross-platform**: Works on Windows, macOS, and Linux
@@ -88,6 +89,7 @@ file-organizer /path/to/source --exclude "*cache*" --exclude "*.tmp"
 | `-q`, `--quiet` | Suppress the preview; only print the final summary | `False` |
 | `--report` | Write a JSON report of the planned/applied moves to this file | `None` |
 | `--by-date` | Organize files into `year/month` folders by modification time | `False` |
+| `-y`, `--yes` | Skip the interactive confirmation prompt before moving | `False` |
 | `--version` | Show program version and exit | `N/A` |
 
 ## Configuration
