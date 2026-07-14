@@ -1,0 +1,507 @@
+#!/usr/bin/env python3
+"""
+file_organizer.py – CLI tool to automatically organize files by type.
+
+Features
+--------
+* Scans one or more source directories recursively
+* Categorizes files into Images, Videos, Documents, Audio, Archives, Others
+* Shows a preview of every move before any changes are made
+* Never overwrites an existing file – adds a numeric suffix if needed
+* Supports a dry‑run mode, custom exclude patterns and verbosity levels
+* Fully typed, logged and tested‑ready (Python 3.10+)
+
+Install with:
+    pip install .
+"""
+
+# ----------------------------------------------------------------------
+# Imports
+# ----------------------------------------------------------------------
+import argparse
+import fnmatch
+import logging
+import shutil
+import sys
+import json
+import time
+from collections import defaultdict
+from pathlib import Path
+from typing import Any, Dict, List, Tuple, cast
+
+# ----------------------------------------------------------------------
+# Logging configuration (JSON‑friendly, can be silenced with --quiet)
+# ----------------------------------------------------------------------
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(levelname)s: %(message)s",
+    stream=sys.stdout,
+)
+log = logging.getLogger(__name__)
+
+# ----------------------------------------------------------------------
+# Configuration – Mapping of extensions → category
+# ----------------------------------------------------------------------
+FILE_CATEGORIES: Dict[str, List[str]] = {
+    "Images": [
+        ".jpg",
+        ".jpeg",
+        ".png",
+        ".gif",
+        ".bmp",
+        ".tiff",
+        ".tif",
+        ".webp",
+        ".svg",
+        ".ico",
+        ".heic",
+        ".heif",
+        ".raw",
+        ".cr2",
+        ".nef",
+        ".arw",
+        ".dng",
+        ".psd",
+        ".ai",
+        ".eps",
+    ],
+    "Videos": [
+        ".mp4",
+        ".mov",
+        ".avi",
+        ".mkv",
+        ".wmv",
+        ".flv",
+        ".webm",
+        ".m4v",
+        ".mpg",
+        ".mpeg",
+        ".3gp",
+        ".3g2",
+        ".ts",
+        ".mts",
+        ".m2ts",
+        ".vob",
+        ".ogv",
+        ".rm",
+        ".rmvb",
+        ".asf",
+        ".divx",
+        ".xvid",
+    ],
+    "Documents": [
+        ".pdf",
+        ".doc",
+        ".docx",
+        ".txt",
+        ".rtf",
+        ".odt",
+        ".xls",
+        ".xlsx",
+        ".ppt",
+        ".pptx",
+        ".csv",
+        ".md",
+        ".tex",
+        ".epub",
+        ".mobi",
+        ".azw",
+        ".pages",
+        ".numbers",
+        ".key",
+        ".odp",
+        ".ods",
+        ".odg",
+        ".odf",
+        ".wpd",
+        ".wps",
+        ".xml",
+        ".json",
+        ".yaml",
+        ".yml",
+        ".toml",
+        ".ini",
+        ".cfg",
+        ".conf",
+        ".log",
+    ],
+    "Audio": [
+        ".mp3",
+        ".wav",
+        ".flac",
+        ".aac",
+        ".ogg",
+        ".m4a",
+        ".wma",
+        ".opus",
+        ".aiff",
+        ".aif",
+        ".au",
+        ".ra",
+        ".ram",
+        ".mid",
+        ".midi",
+        ".amr",
+        ".ape",
+        ".alac",
+        ".dts",
+        ".ac3",
+        ".mp2",
+        ".mpa",
+    ],
+    "Archives": [
+        ".zip",
+        ".rar",
+        ".7z",
+        ".tar",
+        ".gz",
+        ".bz2",
+        ".xz",
+        ".tgz",
+        ".tbz2",
+        ".txz",
+        ".zst",
+        ".lz4",
+        ".lz",
+        ".lzo",
+        ".rz",
+        ".sz",
+        ".cab",
+        ".iso",
+        ".img",
+        ".dmg",
+        ".pkg",
+        ".deb",
+        ".rpm",
+        ".msi",
+        ".apk",
+        ".ipa",
+        ".jar",
+        ".war",
+        ".ear",
+    ],
+}
+
+# Flatten the mapping for O(1) look‑ups.
+EXTENSION_TO_CATEGORY: Dict[str, str] = {
+    ext.lower(): cat for cat, exts in FILE_CATEGORIES.items() for ext in exts
+}
+
+# Names of the folders this tool creates, used to keep re-runs idempotent.
+CATEGORY_NAMES = set(FILE_CATEGORIES) | {"Others"}
+
+# Default exclude patterns (glob‑style, relative to source root)
+DEFAULT_EXCLUDE = [
+    ".*",  # hidden files/folders
+    "*/.git",  # git repos
+    "*/.hg",  # mercurial repos
+    "*/.svn",  # subversion repos
+    "*/venv",
+    "*/env",
+    "*/virtualenv",  # virtual environments
+    "*/node_modules",  # Node.js projects
+]
+
+
+# ----------------------------------------------------------------------
+# Helper functions
+# ----------------------------------------------------------------------
+def get_category_by_extension(extension: str) -> str:
+    """Return the category for a given file extension."""
+    return EXTENSION_TO_CATEGORY.get(extension.lower(), "Others")
+
+
+def scan_directory(
+    source_dirs: List[Path], exclude_patterns: List[str]
+) -> Tuple[Dict[str, List[Path]], List[Path]]:
+    """
+    Recursively scan ``source_dirs`` and group files by category.
+
+    Yields:
+        A tuple of (category_map, all_files) where ``category_map`` is
+        ``{category_name: [Path, ...]}`` and ``all_files`` is a flat list
+        of every discovered file (useful for conflict‑checking).
+    """
+    category_map: Dict[str, List[Path]] = defaultdict(list)
+    all_files: List[Path] = []
+
+    for root in source_dirs:
+        log.debug(f"Scanning {root}")
+        for path in root.rglob("*"):
+            # Skip directories and hidden entries
+            if path.is_dir() or path.name.startswith("."):
+                continue
+
+            # Skip excluded patterns
+            try:
+                rel = path.relative_to(root)
+            except ValueError:
+                # If relative_to fails (different drives on Windows), skip
+                continue
+
+            # Skip our own output folders so re-running is idempotent
+            # (don't re-organize files already placed in "Images/", etc.)
+            if any(part in CATEGORY_NAMES for part in rel.parts[:-1]):
+                continue
+
+            # Skip excluded patterns. A leading "*/" means "match at any depth",
+            # so we test the file's name and every ancestor directory name.
+            # Bare globs ("*cache*", ".*") match by name; path globs
+            # ("build/*.o") match the full relative path.
+            excluded = False
+            for pattern in exclude_patterns:
+                target = pattern[2:] if pattern.startswith("*/") else pattern
+                candidates = [path.name, *rel.parts[:-1]]
+                if fnmatch.fnmatch(str(rel), pattern) or any(
+                    fnmatch.fnmatch(c, target) for c in candidates
+                ):
+                    excluded = True
+                    break
+            if excluded:
+                continue
+
+            category = get_category_by_extension(path.suffix)
+            category_map[category].append(path)
+            all_files.append(path)
+
+    return dict(category_map), all_files
+
+
+def generate_preview(
+    category_map: Dict[str, List[Path]], target_root: Path
+) -> List[Tuple[Path, Path]]:
+    """
+    Produce a list of (source_path, destination_path) tuples without touching
+    the filesystem. Conflict‑resolution adds a counter suffix before the
+    extension.
+    """
+    moves: List[Tuple[Path, Path]] = []
+
+    for category, files in category_map.items():
+        dest_dir = target_root / category
+        for src in files:
+            raw_dest = dest_dir / src.name
+            dest = raw_dest
+            counter = 1
+            while dest.exists():
+                stem = raw_dest.stem
+                suffix = raw_dest.suffix
+                dest = dest_dir / f"{stem}_{counter}{suffix}"
+                counter += 1
+            moves.append((src, dest))
+
+    return moves
+
+
+def print_preview(moves: List[Tuple[Path, Path]]) -> None:
+    """Render a human‑readable preview of the planned moves."""
+    if not moves:
+        print("\n✨ No moves required – everything is already organized.")
+        return
+
+    print("\n" + "=" * 60)
+    print(f"📦 Preview: {len(moves)} files will be moved")
+    print("=" * 60)
+
+    by_dest: Dict[Path, List[Tuple[Path, Path]]] = defaultdict(list)
+    for src, dest in moves:
+        by_dest[dest.parent].append((src, dest))
+
+    for dest_dir, pairs in sorted(by_dest.items()):
+        print(f"\n📁 {dest_dir.relative_to(dest_dir.parent.parent)}")
+        for src, dest in pairs:
+            try:
+                rel: Path | str = src.relative_to(dest_dir.parent.parent)
+            except ValueError:
+                rel = src.name
+            print(f"   📄 {rel}  →  {dest.name}")
+
+    print("\n" + "=" * 60)
+
+
+def execute_moves(
+    moves: List[Tuple[Path, Path]], dry_run: bool = False
+) -> Tuple[int, int]:
+    """Perform the moves on disk, handling conflicts safely and recording history.
+
+    When ``dry_run`` is True, no files are moved and no history is recorded;
+    the function returns (0, 0) so callers can preview intent without side effects.
+    """
+    success = 0
+    failed = 0
+
+    if dry_run:
+        return success, failed
+
+    for src, dest in moves:
+        try:
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(src), str(dest))
+            print(f"✅ {src.name} → {dest.parent.name}/{dest.name}")
+            record_move(src, dest)
+            success += 1
+        except PermissionError as exc:
+            log.error(f"Permission denied moving {src}: {exc}")
+            failed += 1
+        except OSError as exc:
+            log.error(f"OS error moving {src}: {exc}")
+            failed += 1
+
+    return success, failed
+
+
+# ----------------------------------------------------------------------
+# History tracking for undo functionality
+# ----------------------------------------------------------------------
+HISTORY_FILE = Path.home() / ".file_organizer_history.json"
+
+
+def load_history() -> List[Dict[str, Any]]:
+    """Load move history from JSON file."""
+    if not HISTORY_FILE.exists():
+        return []
+    try:
+        with open(HISTORY_FILE, "r", encoding="utf-8") as f:
+            return cast(List[Dict[str, Any]], json.load(f))
+    except (json.JSONDecodeError, OSError):
+        return []
+
+
+def save_history(history: List[Dict[str, Any]]) -> None:
+    """Save move history to JSON file."""
+    try:
+        with open(HISTORY_FILE, "w", encoding="utf-8") as f:
+            json.dump(history, f, indent=2, default=str)
+    except OSError as exc:
+        log.error(f"Could not save history: {exc}")
+
+
+def record_move(src: Path, dest: Path) -> None:
+    """Record a file move for potential undo."""
+    history = load_history()
+    history.append(
+        {
+            "timestamp": time.time(),
+            "source": str(src),
+            "destination": str(dest),
+        }
+    )
+    # Keep only last 1000 operations
+    if len(history) > 1000:
+        history = history[-1000:]
+    save_history(history)
+
+
+# ----------------------------------------------------------------------
+# CLI handling
+# ----------------------------------------------------------------------
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Organize files into categorical folders."
+    )
+    parser.add_argument(
+        "paths",
+        metavar="PATH",
+        nargs="+",
+        type=Path,
+        help="One or more directories to scan.",
+    )
+    parser.add_argument(
+        "-e",
+        "--exclude",
+        action="extend",
+        default=[],
+        help="Additional glob patterns to exclude (e.g. '*cache*').",
+    )
+    parser.add_argument(
+        "-n",
+        "--dry-run",
+        action="store_true",
+        help="Show what would happen without moving any files.",
+    )
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="count",
+        default=0,
+        help="Increase output verbosity (can be repeated).",
+    )
+    parser.add_argument(
+        "-o",
+        "--output",
+        type=Path,
+        default=None,
+        help="Base directory for output (defaults to the first input path).",
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version="file-organizer 0.1.0",
+    )
+    return parser
+
+
+def main() -> None:
+    parser = build_parser()
+    args = parser.parse_args()
+
+    # Adjust logging level based on -v flags
+    if args.verbose == 0:
+        log.setLevel(logging.INFO)
+    elif args.verbose == 1:
+        log.setLevel(logging.DEBUG)
+    else:
+        log.setLevel(logging.DEBUG)
+
+    # Merge user‑supplied excludes with defaults
+    exclude_patterns = DEFAULT_EXCLUDE + args.exclude
+
+    # Resolve target output directory
+    if args.output:
+        target_root = args.output.expanduser().resolve()
+    else:
+        if not args.paths:
+            parser.error("At least one source path is required.")
+        target_root = args.paths[0].expanduser().resolve()
+
+    if not target_root.exists():
+        log.error(f"Target directory does not exist: {target_root}")
+        sys.exit(1)
+    if not target_root.is_dir():
+        log.error(f"Target is not a directory: {target_root}")
+        sys.exit(1)
+
+    # ------------------------------------------------------------------
+    # 1️⃣ Scan
+    # ------------------------------------------------------------------
+    category_map, all_files = scan_directory(args.paths, exclude_patterns)
+    if not category_map:
+        log.info("No files matched the supplied criteria.")
+        return
+
+    # ------------------------------------------------------------------
+    # 2️⃣ Preview
+    # ------------------------------------------------------------------
+    moves = generate_preview(category_map, target_root)
+    print_preview(moves)
+
+    if not args.dry_run:
+        # ------------------------------------------------------------------
+        # 3️⃣ Execute
+        # ------------------------------------------------------------------
+        log.info("Organizing files …")
+        success, failed = execute_moves(moves)
+
+        # ------------------------------------------------------------------
+        # 4️⃣ Summary
+        # ------------------------------------------------------------------
+        summary = f"✅ {success} files moved, {failed} failures."
+        print("\n" + "=" * 50)
+        print(summary)
+        print("=" * 50)
+    else:
+        log.info("🧪 Dry‑run complete – no changes were applied.")
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,43 @@
+[project]
+name = "file-organizer"
+version = "0.1.0"
+description = "CLI tool to automatically organize files by type into categorized folders"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [
+    {name = "Roy", email = "roy@example.com"}
+]
+keywords = ["files", "organizer", "cli", "automation"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: End Users/Desktop",
+    "Topic :: Utilities",
+]
+
+[project.scripts]
+file-organizer = "file_organizer:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "mypy>=1",
+    "ruff>=0.8",
+    "black>=24",
+]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 88
+
+[tool.black]
+line-length = 88
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
