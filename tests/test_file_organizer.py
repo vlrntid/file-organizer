@@ -250,6 +250,33 @@ class TestGenerateDatePreview:
         assert moves[0][1].parent == expected_dir
 
 
+class TestDedupe:
+    """Tests for the dedupe routing in the preview generators."""
+
+    def _identical_pair(self, temp_dir: Path) -> dict[str, list[Path]]:
+        f1 = temp_dir / "a.jpg"
+        f2 = temp_dir / "b.jpg"
+        f1.write_bytes(b"IDENTICAL-BYTES")
+        f2.write_bytes(b"IDENTICAL-BYTES")
+        return {"Images": [f1, f2]}
+
+    def test_dedupe_routes_duplicates(self, temp_dir: Path) -> None:
+        """With dedupe, the second identical file goes to Duplicates."""
+        category_map = self._identical_pair(temp_dir)
+        moves = generate_preview(category_map, temp_dir, dedupe=True)
+
+        dests = [d for _, d in moves]
+        assert sum(1 for d in dests if d.parent.name == "Images") == 1
+        assert sum(1 for d in dests if d.parent.name == "Duplicates") == 1
+
+    def test_no_dedupe_keeps_both(self, temp_dir: Path) -> None:
+        """Without dedupe, both identical files stay in their category."""
+        category_map = self._identical_pair(temp_dir)
+        moves = generate_preview(category_map, temp_dir, dedupe=False)
+
+        assert all(d.parent.name == "Images" for _, d in moves)
+
+
 # ----------------------------------------------------------------------
 # Execute moves tests
 # ----------------------------------------------------------------------

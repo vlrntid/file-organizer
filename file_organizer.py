@@ -20,6 +20,7 @@ Install with:
 # ----------------------------------------------------------------------
 import argparse
 import fnmatch
+import hashlib
 import logging
 from datetime import datetime
 import shutil
@@ -268,40 +269,71 @@ def scan_directory(
     return dict(category_map), all_files
 
 
+def _unique_dest(dest_dir: Path, name: str) -> Path:
+    """Return ``dest_dir/name``, appending a counter before the suffix if needed."""
+    dest = dest_dir / name
+    counter = 1
+    while dest.exists():
+        stem = Path(name).stem
+        suffix = Path(name).suffix
+        dest = dest_dir / f"{stem}_{counter}{suffix}"
+        counter += 1
+    return dest
+
+
+def _file_hash(path: Path) -> str:
+    """Return a SHA-256 hash of the file's contents (empty string on error)."""
+    h = hashlib.sha256()
+    try:
+        with open(path, "rb") as f:
+            for chunk in iter(lambda: f.read(65536), b""):
+                h.update(chunk)
+    except OSError:
+        return ""
+    return h.hexdigest()
+
+
 def generate_preview(
-    category_map: Dict[str, List[Path]], target_root: Path
+    category_map: Dict[str, List[Path]],
+    target_root: Path,
+    dedupe: bool = False,
 ) -> List[Tuple[Path, Path]]:
     """
     Produce a list of (source_path, destination_path) tuples without touching
     the filesystem. Conflict‑resolution adds a counter suffix before the
-    extension.
+    extension. With ``dedupe=True``, files whose content matches an earlier
+    file are routed to a ``Duplicates`` folder instead of their category.
     """
     moves: List[Tuple[Path, Path]] = []
+    seen_hashes: set[str] = set()
 
     for category, files in category_map.items():
-        dest_dir = target_root / category
         for src in files:
-            raw_dest = dest_dir / src.name
-            dest = raw_dest
-            counter = 1
-            while dest.exists():
-                stem = raw_dest.stem
-                suffix = raw_dest.suffix
-                dest = dest_dir / f"{stem}_{counter}{suffix}"
-                counter += 1
+            dest_dir = target_root / category
+            if dedupe:
+                file_hash = _file_hash(src)
+                if file_hash and file_hash in seen_hashes:
+                    dest_dir = target_root / "Duplicates"
+                elif file_hash:
+                    seen_hashes.add(file_hash)
+
+            dest = _unique_dest(dest_dir, src.name)
             moves.append((src, dest))
 
     return moves
 
 
 def generate_date_preview(
-    files: List[Path], target_root: Path
+    files: List[Path], target_root: Path, dedupe: bool = False
 ) -> List[Tuple[Path, Path]]:
     """
     Plan moves that group files into ``year/month`` folders based on their
-    modification time. Conflict resolution adds a counter suffix as usual.
+    modification time. With ``dedupe=True``, content duplicates are routed to
+    a ``Duplicates`` folder.
     """
     moves: List[Tuple[Path, Path]] = []
+    seen_hashes: set[str] = set()
+
     for src in files:
         try:
             mtime = src.stat().st_mtime
@@ -309,14 +341,14 @@ def generate_date_preview(
             continue
         dt = datetime.fromtimestamp(mtime)
         dest_dir = target_root / f"{dt.year}" / f"{dt.month:02d}"
-        raw_dest = dest_dir / src.name
-        dest = raw_dest
-        counter = 1
-        while dest.exists():
-            stem = raw_dest.stem
-            suffix = raw_dest.suffix
-            dest = dest_dir / f"{stem}_{counter}{suffix}"
-            counter += 1
+        if dedupe:
+            file_hash = _file_hash(src)
+            if file_hash and file_hash in seen_hashes:
+                dest_dir = target_root / "Duplicates"
+            elif file_hash:
+                seen_hashes.add(file_hash)
+
+        dest = _unique_dest(dest_dir, src.name)
         moves.append((src, dest))
 
     return moves
@@ -572,6 +604,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Organize files into year/month folders by modification time.",
     )
     parser.add_argument(
+        "--dedupe",
+        action="store_true",
+        help="Route content-duplicate files to a Duplicates folder.",
+    )
+    parser.add_argument(
         "-y",
         "--yes",
         action="store_true",
@@ -645,9 +682,9 @@ def main() -> None:
     # 2️⃣ Preview
     # ------------------------------------------------------------------
     if args.by_date:
-        moves = generate_date_preview(all_files, target_root)
+        moves = generate_date_preview(all_files, target_root, dedupe=args.dedupe)
     else:
-        moves = generate_preview(category_map, target_root)
+        moves = generate_preview(category_map, target_root, dedupe=args.dedupe)
     if not args.quiet:
         print_preview(moves)
 

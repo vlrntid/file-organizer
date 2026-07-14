@@ -22,6 +22,7 @@ A command-line tool to automatically organize files into categorized folders (Im
 - **Recursive Scanning**: Organizes files in nested subdirectories
 - **Smart Categorization**: 6 built-in categories (Images, Videos, Documents, Audio, Archives, Others)
 - **Date Organization**: Alternatively group files into `year/month` folders with `--by-date`
+- **Duplicate Detection**: Route identical files to a `Duplicates` folder with `--dedupe`
 - **Safe Operations**: Never overwrites files; adds counter suffix for conflicts
 - **Dry-run Mode**: Preview all changes before executing
 - **Undo**: Reverse the last organization using the recorded move history
@@ -64,6 +65,9 @@ file-organizer ~/Downloads -q
 # Organize into year/month folders by modification date
 file-organizer ~/Downloads --by-date
 
+# Route content-duplicate files into a Duplicates folder
+file-organizer ~/Downloads --dedupe
+
 # Verbose output
 file-organizer /path/to/source -v
 
@@ -89,6 +93,7 @@ file-organizer /path/to/source --exclude "*cache*" --exclude "*.tmp"
 | `-q`, `--quiet` | Suppress the preview; only print the final summary | `False` |
 | `--report` | Write a JSON report of the planned/applied moves to this file | `None` |
 | `--by-date` | Organize files into `year/month` folders by modification time | `False` |
+| `--dedupe` | Route content-duplicate files to a `Duplicates` folder | `False` |
 | `-y`, `--yes` | Skip the interactive confirmation prompt before moving | `False` |
 | `--version` | Show program version and exit | `N/A` |
 
