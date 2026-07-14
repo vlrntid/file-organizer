@@ -356,21 +356,23 @@ def execute_moves(
 HISTORY_FILE = Path.home() / ".file_organizer_history.json"
 
 
-def load_history() -> List[Dict[str, Any]]:
+def load_history(history_file: Path = HISTORY_FILE) -> List[Dict[str, Any]]:
     """Load move history from JSON file."""
-    if not HISTORY_FILE.exists():
+    if not history_file.exists():
         return []
     try:
-        with open(HISTORY_FILE, "r", encoding="utf-8") as f:
+        with open(history_file, "r", encoding="utf-8") as f:
             return cast(List[Dict[str, Any]], json.load(f))
     except (json.JSONDecodeError, OSError):
         return []
 
 
-def save_history(history: List[Dict[str, Any]]) -> None:
+def save_history(
+    history: List[Dict[str, Any]], history_file: Path = HISTORY_FILE
+) -> None:
     """Save move history to JSON file."""
     try:
-        with open(HISTORY_FILE, "w", encoding="utf-8") as f:
+        with open(history_file, "w", encoding="utf-8") as f:
             json.dump(history, f, indent=2, default=str)
     except OSError as exc:
         log.error(f"Could not save history: {exc}")
@@ -390,6 +392,46 @@ def record_move(src: Path, dest: Path) -> None:
     if len(history) > 1000:
         history = history[-1000:]
     save_history(history)
+
+
+def undo_moves(history_file: Path = HISTORY_FILE) -> Tuple[int, int]:
+    """Reverse recorded moves using the history file.
+
+    Moves are unwound newest-first and a move is only reversed when its
+    destination still exists and its original source does not, so undo never
+    clobbers an existing file. Returns ``(success, failed)``.
+    """
+    history = load_history(history_file)
+    if not history:
+        log.info("Nothing to undo – history is empty.")
+        return 0, 0
+
+    success = 0
+    failed = 0
+    # Newest entries first so nested moves unwind correctly.
+    for entry in reversed(history):
+        dest = Path(entry["destination"])
+        src = Path(entry["source"])
+        if not dest.exists():
+            continue
+        if src.exists():
+            log.warning(f"Skip undo – source already exists: {src}")
+            failed += 1
+            continue
+        try:
+            src.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(dest), str(src))
+            print(f"↩️  {dest.name} → {src.parent.name}/{src.name}")
+            success += 1
+        except (PermissionError, OSError) as exc:
+            log.error(f"Undo failed for {dest}: {exc}")
+            failed += 1
+
+    # Clear history only when nothing failed.
+    if failed == 0:
+        save_history([], history_file)
+
+    return success, failed
 
 
 # ----------------------------------------------------------------------
@@ -434,6 +476,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Base directory for output (defaults to the first input path).",
     )
     parser.add_argument(
+        "--undo",
+        action="store_true",
+        help="Reverse the last organization using the move history.",
+    )
+    parser.add_argument(
         "--version",
         action="version",
         version="file-organizer 0.1.0",
@@ -442,6 +489,16 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> None:
+    # Windows consoles default to cp1252, which can't encode the emoji used
+    # below. Force UTF-8 so output is portable across platforms.
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            try:
+                reconfigure(encoding="utf-8")
+            except (ValueError, OSError):
+                pass
+
     parser = build_parser()
     args = parser.parse_args()
 
@@ -452,6 +509,14 @@ def main() -> None:
         log.setLevel(logging.DEBUG)
     else:
         log.setLevel(logging.DEBUG)
+
+    # Undo mode: reverse the last organization and exit.
+    if args.undo:
+        success, failed = undo_moves()
+        print("\n" + "=" * 50)
+        print(f"↩️  {success} files restored, {failed} failures.")
+        print("=" * 50)
+        return
 
     # Merge user‑supplied excludes with defaults
     exclude_patterns = DEFAULT_EXCLUDE + args.exclude

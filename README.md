@@ -13,6 +13,7 @@ A command-line tool to automatically organize files into categorized folders (Im
 - [Usage](#usage)
 - [Configuration](#configuration)
 - [Examples](#examples)
+- [Demo](#demo)
 - [Development](#development)
 - [License](#license)
 - [Contributing](#contributing)
@@ -22,6 +23,7 @@ A command-line tool to automatically organize files into categorized folders (Im
 - **Smart Categorization**: 6 built-in categories (Images, Videos, Documents, Audio, Archives, Others)
 - **Safe Operations**: Never overwrites files; adds counter suffix for conflicts
 - **Dry-run Mode**: Preview all changes before executing
+- **Undo**: Reverse the last organization using the recorded move history
 - **Flexible Exclusions**: Customizable ignore patterns for git repos, virtual environments, etc.
 - **Multiple Sources**: Organize from multiple directories into one target
 - **Cross-platform**: Works on Windows, macOS, and Linux
@@ -46,6 +48,9 @@ file-organizer /path/to/source
 # Dry run to see what would happen
 file-organizer /path/to/source --dry-run
 
+# Undo the last organization
+file-organizer --undo
+
 # Verbose output
 file-organizer /path/to/source -v
 
@@ -63,10 +68,11 @@ file-organizer /path/to/source --exclude "*cache*" --exclude "*.tmp"
 | Argument | Description | Default |
 |----------|-------------|---------|
 | `PATH` | One or more source directories to scan | Required |
-| `-e`, `--exclude` | Additional glob patterns to exclude | `*.git`, `*/venv`, etc. |
+| `-e`, `--exclude` | Additional glob patterns to exclude | `*/.git`, `*/venv`, etc. |
 | `-n`, `--dry-run` | Show what would happen without moving files | `False` |
 | `-v`, `--verbose` | Increase output verbosity (can be repeated) | `0` |
 | `-o`, `--output` | Base directory for output (defaults to first source path) | `None` |
+| `--undo` | Reverse the last organization using the move history | `False` |
 | `--version` | Show program version and exit | `N/A` |
 
 ## Configuration
@@ -116,6 +122,41 @@ file-organizer ~/Projects/project1 ~/Projects/project2 -o ~/AllAssets
 file-organizer ~/Project --exclude "*cache*" --exclude "__pycache__"
 ```
 
+## Demo
+
+Preview changes before touching anything with `--dry-run`:
+
+```text
+$ file-organizer ~/Downloads --dry-run
+
+============================================================
+📦 Preview: 5 files will be moved
+============================================================
+
+📁 Downloads/Archives
+   📄 backup.zip  →  backup.zip
+
+📁 Downloads/Audio
+   📄 song.mp3  →  song.mp3
+
+📁 Downloads/Documents
+   📄 notes.txt  →  notes.txt
+   📄 report.pdf  →  report.pdf
+
+📁 Downloads/Images
+   📄 photo.jpg  →  photo.jpg
+
+============================================================
+INFO: 🧪 Dry-run complete – no changes were applied.
+```
+
+Then run for real (or with `--undo` afterwards to reverse it):
+
+```text
+$ file-organizer ~/Downloads
+✅ 5 files moved, 0 failures.
+```
+
 ## Development
 
 ### Setup
@@ -148,6 +189,12 @@ ruff format .
 # Type check with mypy
 mypy .
 ```
+
+### CI & Coverage
+Linting, type-checking, and tests run automatically on every push/PR via
+GitHub Actions (see `.github/workflows/ci.yml`). Coverage is uploaded to
+[Codecov](https://codecov.io); add a `CODECOV_TOKEN` repository secret (Settings →
+Secrets) so coverage reporting works end to end.
 
 ### Building Distribution
 ```bash

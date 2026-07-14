@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 
+import json
 import tempfile
 from collections.abc import Iterator
 from pathlib import Path
@@ -17,6 +18,7 @@ from file_organizer import (
     scan_directory,
     generate_preview,
     execute_moves,
+    undo_moves,
 )
 
 
@@ -319,3 +321,77 @@ class TestIntegration:
         category_map2, _ = scan_directory([temp_dir], DEFAULT_EXCLUDE)
         moves2 = generate_preview(category_map2, temp_dir)
         assert len(moves2) == 0  # Nothing to do
+
+
+# ----------------------------------------------------------------------
+# Undo tests
+# ----------------------------------------------------------------------
+class TestUndoMoves:
+    """Tests for the undo_moves function."""
+
+    def test_undo_restores_files(self, temp_dir: Path) -> None:
+        """A recorded move is reversed and the file returns to its source."""
+        src = temp_dir / "photo.jpg"
+        dest = temp_dir / "Images" / "photo.jpg"
+        dest.parent.mkdir()
+        dest.write_text("image")  # simulate an already-organized file (source is gone)
+
+        history_file = temp_dir / "history.json"
+        history_file.write_text(
+            json.dumps(
+                [
+                    {
+                        "timestamp": 1.0,
+                        "source": str(src),
+                        "destination": str(dest),
+                    }
+                ]
+            )
+        )
+
+        success, failed = undo_moves(history_file)
+
+        assert success == 1
+        assert failed == 0
+        assert src.exists()
+        assert not dest.exists()
+        # History is cleared after a clean undo
+        assert json.loads(history_file.read_text()) == []
+
+    def test_undo_empty_history(self, temp_dir: Path) -> None:
+        """Undoing with no history is a no-op."""
+        history_file = temp_dir / "history.json"
+        history_file.write_text("[]")
+
+        success, failed = undo_moves(history_file)
+
+        assert success == 0
+        assert failed == 0
+
+    def test_undo_skips_when_source_exists(self, temp_dir: Path) -> None:
+        """Undo does not clobber a file already present at the source."""
+        src = temp_dir / "photo.jpg"
+        dest = temp_dir / "Images" / "photo.jpg"
+        dest.parent.mkdir()
+        src.write_text("original")  # already here
+        dest.write_text("moved")
+
+        history_file = temp_dir / "history.json"
+        history_file.write_text(
+            json.dumps(
+                [
+                    {
+                        "timestamp": 1.0,
+                        "source": str(src),
+                        "destination": str(dest),
+                    }
+                ]
+            )
+        )
+
+        success, failed = undo_moves(history_file)
+
+        assert success == 0
+        assert failed == 1
+        assert src.read_text() == "original"  # untouched
+        assert dest.exists()
