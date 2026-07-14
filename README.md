@@ -24,6 +24,8 @@ A command-line tool to automatically organize files into categorized folders (Im
 - **Safe Operations**: Never overwrites files; adds counter suffix for conflicts
 - **Dry-run Mode**: Preview all changes before executing
 - **Undo**: Reverse the last organization using the recorded move history
+- **JSON Report**: Emit a machine-readable report of every move with `--report`
+- **Quiet Mode**: Suppress the preview for cron/automation with `-q`
 - **Flexible Exclusions**: Customizable ignore patterns for git repos, virtual environments, etc.
 - **Multiple Sources**: Organize from multiple directories into one target
 - **Cross-platform**: Works on Windows, macOS, and Linux
@@ -51,6 +53,12 @@ file-organizer /path/to/source --dry-run
 # Undo the last organization
 file-organizer --undo
 
+# Write a JSON report of the planned moves
+file-organizer ~/Downloads --dry-run --report plan.json
+
+# Quiet mode (summary only) for cron/automation
+file-organizer ~/Downloads -q
+
 # Verbose output
 file-organizer /path/to/source -v
 
@@ -73,6 +81,8 @@ file-organizer /path/to/source --exclude "*cache*" --exclude "*.tmp"
 | `-v`, `--verbose` | Increase output verbosity (can be repeated) | `0` |
 | `-o`, `--output` | Base directory for output (defaults to first source path) | `None` |
 | `--undo` | Reverse the last organization using the move history | `False` |
+| `-q`, `--quiet` | Suppress the preview; only print the final summary | `False` |
+| `--report` | Write a JSON report of the planned/applied moves to this file | `None` |
 | `--version` | Show program version and exit | `N/A` |
 
 ## Configuration

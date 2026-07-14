@@ -350,6 +350,51 @@ def execute_moves(
     return success, failed
 
 
+def format_summary(moves: List[Tuple[Path, Path]], success: int, failed: int) -> str:
+    """Render the end-of-run summary, including a per-category breakdown."""
+    by_category: Dict[str, int] = defaultdict(int)
+    for _, dest in moves:
+        by_category[dest.parent.name] += 1
+
+    lines = ["=" * 50, f"✅ {success} files moved, {failed} failures."]
+    if by_category:
+        lines.append("By category:")
+        for cat in sorted(by_category):
+            lines.append(f"   {cat}: {by_category[cat]}")
+    lines.append("=" * 50)
+    return "\n".join(lines)
+
+
+def write_report(
+    moves: List[Tuple[Path, Path]],
+    path: Path,
+    dry_run: bool = False,
+    success: int = 0,
+    failed: int = 0,
+) -> None:
+    """Write a JSON report of the planned (or applied) moves to ``path``."""
+    by_category: Dict[str, int] = defaultdict(int)
+    for _, dest in moves:
+        by_category[dest.parent.name] += 1
+
+    report = {
+        "timestamp": time.time(),
+        "dry_run": dry_run,
+        "total": len(moves),
+        "success": success,
+        "failed": failed,
+        "by_category": dict(by_category),
+        "moves": [
+            {"source": str(src), "destination": str(dest)} for src, dest in moves
+        ],
+    }
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(report, f, indent=2)
+    except OSError as exc:
+        log.error(f"Could not write report: {exc}")
+
+
 # ----------------------------------------------------------------------
 # History tracking for undo functionality
 # ----------------------------------------------------------------------
@@ -481,6 +526,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="Reverse the last organization using the move history.",
     )
     parser.add_argument(
+        "-q",
+        "--quiet",
+        action="store_true",
+        help="Suppress the preview; only print the final summary.",
+    )
+    parser.add_argument(
+        "--report",
+        type=Path,
+        default=None,
+        help="Write a JSON report of the planned/applied moves to this file.",
+    )
+    parser.add_argument(
         "--version",
         action="version",
         version="file-organizer 0.1.0",
@@ -548,7 +605,8 @@ def main() -> None:
     # 2️⃣ Preview
     # ------------------------------------------------------------------
     moves = generate_preview(category_map, target_root)
-    print_preview(moves)
+    if not args.quiet:
+        print_preview(moves)
 
     if not args.dry_run:
         # ------------------------------------------------------------------
@@ -560,12 +618,15 @@ def main() -> None:
         # ------------------------------------------------------------------
         # 4️⃣ Summary
         # ------------------------------------------------------------------
-        summary = f"✅ {success} files moved, {failed} failures."
-        print("\n" + "=" * 50)
-        print(summary)
-        print("=" * 50)
+        print("\n" + format_summary(moves, success, failed))
+        if args.report:
+            write_report(
+                moves, args.report, dry_run=False, success=success, failed=failed
+            )
     else:
         log.info("🧪 Dry‑run complete – no changes were applied.")
+        if args.report:
+            write_report(moves, args.report, dry_run=True)
 
 
 if __name__ == "__main__":

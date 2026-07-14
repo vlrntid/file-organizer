@@ -19,6 +19,8 @@ from file_organizer import (
     generate_preview,
     execute_moves,
     undo_moves,
+    write_report,
+    format_summary,
 )
 
 
@@ -395,3 +397,35 @@ class TestUndoMoves:
         assert failed == 1
         assert src.read_text() == "original"  # untouched
         assert dest.exists()
+
+
+# ----------------------------------------------------------------------
+# Report / summary tests
+# ----------------------------------------------------------------------
+class TestReportAndSummary:
+    """Tests for write_report and format_summary."""
+
+    def test_write_report_contents(self, temp_dir: Path) -> None:
+        """write_report emits a JSON report with counts and moves."""
+        src = temp_dir / "photo.jpg"
+        dest = temp_dir / "Images" / "photo.jpg"
+        moves = [(src, dest)]
+
+        report_path = temp_dir / "report.json"
+        write_report(moves, report_path, dry_run=True)
+
+        data = json.loads(report_path.read_text())
+        assert data["total"] == 1
+        assert data["dry_run"] is True
+        assert data["by_category"] == {"Images": 1}
+        assert data["moves"][0]["source"] == str(src)
+        assert data["moves"][0]["destination"] == str(dest)
+
+    def test_format_summary_breakdown(self, temp_dir: Path) -> None:
+        """format_summary shows the per-category breakdown."""
+        src = temp_dir / "photo.jpg"
+        dest = temp_dir / "Images" / "photo.jpg"
+        out = format_summary([(src, dest)], success=1, failed=0)
+
+        assert "1 files moved" in out
+        assert "Images: 1" in out
